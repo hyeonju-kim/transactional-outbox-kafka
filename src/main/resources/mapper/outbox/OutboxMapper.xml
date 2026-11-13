@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hyeonju.outbox.outbox.dao.OutboxDao">
+
+    <insert id="regOutboxEvent">
+        /*
+            SQL ID: com.hyeonju.outbox.outbox.dao.OutboxDao.regOutboxEvent
+            SQL 명: outbox 이벤트 기록 (주문과 같은 트랜잭션)
+        */
+        INSERT INTO outbox_event (event_id, aggregate_id, event_type, payload, status)
+        VALUES (#{eventId}, #{aggregateId}, #{eventType}, #{payload}, #{status})
+    </insert>
+
+    <select id="getOutboxEvent" resultType="com.hyeonju.outbox.outbox.dto.OutboxEventDto">
+        /*
+            SQL ID: com.hyeonju.outbox.outbox.dao.OutboxDao.getOutboxEvent
+            SQL 명: outbox 이벤트 단건 조회
+        */
+        SELECT event_id, aggregate_id, event_type, payload, status, retry_count, last_error, created_at, sent_at
+          FROM outbox_event
+         WHERE event_id = #{eventId}
+    </select>
+
+    <select id="getPendingEventListForUpdate" resultType="com.hyeonju.outbox.outbox.dto.OutboxEventDto">
+        /*
+            SQL ID: com.hyeonju.outbox.outbox.dao.OutboxDao.getPendingEventListForUpdate
+            SQL 명: 발행 대기 이벤트 잠금 조회
+                    - SKIP LOCKED: 다른 인스턴스가 잡은 행은 건너뛰어, 같은 이벤트를 두 스위퍼가 동시에 발행하지 않게 한다
+                    - minAgeMs: 커밋 직후 즉시 발행 중인 이벤트와 겹치지 않게 일정 시간 지난 건만 가져간다
+        */
+        SELECT event_id, aggregate_id, event_type, payload, status, retry_count, last_error, created_at, sent_at
+          FROM outbox_event
+         WHERE status = 'PENDING'
+           AND created_at &lt; now() - (#{minAgeMs} * INTERVAL '1 millisecond')
+         ORDER BY created_at
+         LIMIT #{limit}
+           FOR UPDATE SKIP LOCKED
+    </select>
+
+    <update id="modOutboxSent">
+        /*
+            SQL ID: com.hyeonju.outbox.outbox.dao.OutboxDao.modOutboxSent
+            SQL 명: 발행 완료 처리
+        */
+        UPDATE outbox_event
+           SET status = 'SENT', sent_at = now(), last_error = NULL
+         WHERE event_id = #{eventId}
+           AND status = 'PENDING'
+    </update>
+
+    <update id="modOutboxRetry">
+        /*
+            SQL ID: com.hyeonju.outbox.outbox.dao.OutboxDao.modOutboxRetry
+            SQL 명: 발행 실패 기록 (한도 초과 시 DEAD 격리)
+        */
+        UPDATE outbox_event
+           SET retry_count = retry_count + 1,
+               last_error  = LEFT(#{error}, 500),
+               status      = CASE WHEN retry_count + 1 &gt;= #{maxRetry} THEN 'DEAD' ELSE status END
+         WHERE event_id = #{eventId}
+           AND status = 'PENDING'
+    </update>
+
+</mapper>

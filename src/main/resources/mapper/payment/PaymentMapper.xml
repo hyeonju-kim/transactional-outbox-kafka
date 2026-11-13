@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="com.hyeonju.outbox.payment.dao.PaymentDao">
+
+    <insert id="regProcessedEvent">
+        /*
+            SQL ID: com.hyeonju.outbox.payment.dao.PaymentDao.regProcessedEvent
+            SQL 명: 처리 이력 등록 (같은 eventId 가 다시 오면 0건 → 중복으로 판단)
+        */
+        INSERT INTO processed_event (event_id)
+        VALUES (#{eventId})
+        ON CONFLICT (event_id) DO NOTHING
+    </insert>
+
+    <insert id="regPayment">
+        /*
+            SQL ID: com.hyeonju.outbox.payment.dao.PaymentDao.regPayment
+            SQL 명: 결제 등록
+        */
+        INSERT INTO payment (order_id, amount)
+        VALUES (#{orderId}, #{amount})
+    </insert>
+
+</mapper>

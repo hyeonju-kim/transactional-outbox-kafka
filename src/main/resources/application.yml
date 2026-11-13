@@ -1,0 +1,45 @@
+spring:
+  application:
+    name: transactional-outbox-kafka
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/outbox}
+    username: ${DB_USERNAME:outbox}
+    password: ${DB_PASSWORD:outbox}
+  sql:
+    init:
+      mode: always
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        enable.idempotence: true
+        # Kafka 장애 시 오래 붙잡지 않고 빨리 실패시켜 스위퍼에게 넘긴다
+        max.block.ms: 3000
+        request.timeout.ms: 3000
+        delivery.timeout.ms: 6000
+    consumer:
+      group-id: payment-service
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    listener:
+      ack-mode: manual
+
+mybatis:
+  mapper-locations: classpath:mapper/**/*.xml
+  type-handlers-package: com.hyeonju.outbox.common.typehandler
+  configuration:
+    map-underscore-to-camel-case: true
+
+outbox:
+  topic: order-events
+  relay:
+    sweep-interval-ms: 5000   # 스위퍼 주기
+    min-age-ms: 3000          # 즉시 발행 중인 건과 겹치지 않게, 이보다 오래된 PENDING 만 처리
+    batch-size: 100           # 한 번에 가져갈 PENDING 건수
+    max-retry: 5              # 이 횟수를 넘으면 DEAD 로 격리
+    send-timeout-ms: 5000
